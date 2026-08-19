@@ -10,8 +10,9 @@ const PROCESSADOS = path.join(ROOT, 'processados');
 fs.mkdirSync(ENTRADA, { recursive: true });
 fs.mkdirSync(PROCESSADOS, { recursive: true });
 
+const fila: string[] = [];
+const naFila = new Set<string>();
 let processando = false;
-const arquivosEmFila = new Set<string>();
 
 function esperar(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -20,7 +21,7 @@ function esperar(ms: number): Promise<void> {
 async function esperarArquivoEstavel(fullPath: string): Promise<boolean> {
   let tamanhoAnterior = -1;
 
-  for (let tentativa = 0; tentativa < 10; tentativa++) {
+  for (let tentativa = 0; tentativa < 15; tentativa++) {
     if (!fs.existsSync(fullPath)) return false;
 
     const tamanhoAtual = fs.statSync(fullPath).size;
@@ -34,12 +35,21 @@ async function esperarArquivoEstavel(fullPath: string): Promise<boolean> {
   return fs.existsSync(fullPath);
 }
 
+function adicionarFila(arquivo: string): void {
+  if (!arquivo.toLowerCase().endsWith('.txt')) return;
+  if (naFila.has(arquivo)) return;
+
+  const fullPath = path.join(ENTRADA, arquivo);
+  if (!fs.existsSync(fullPath)) return;
+
+  naFila.add(arquivo);
+  fila.push(arquivo);
+
+  console.log(`Arquivo colocado na fila: ${arquivo}`);
+  void processarFila();
+}
+
 async function processarArquivo(arquivo: string): Promise<void> {
-  if (processando || arquivosEmFila.has(arquivo)) return;
-
-  arquivosEmFila.add(arquivo);
-  processando = true;
-
   const fullPath = path.join(ENTRADA, arquivo);
 
   try {
@@ -48,7 +58,10 @@ async function processarArquivo(arquivo: string): Promise<void> {
     console.log(`\nLendo arquivo: ${arquivo}`);
 
     const estavel = await esperarArquivoEstavel(fullPath);
-    if (!estavel) return;
+    if (!estavel) {
+      console.log(`Arquivo desapareceu antes do processamento: ${arquivo}`);
+      return;
+    }
 
     const pedidos = fs
       .readFileSync(fullPath, 'utf8')
@@ -56,12 +69,12 @@ async function processarArquivo(arquivo: string): Promise<void> {
       .map((x) => x.trim())
       .filter(Boolean);
 
-    if (pedidos.length === 0) {
-      console.log('Arquivo vazio. Movendo para processados.');
-    } else {
-      console.log(`Pedidos encontrados: ${pedidos.length}`);
+    console.log(`Pedidos encontrados: ${pedidos.length}`);
 
+    if (pedidos.length > 0) {
       const browser = await launchBrowser();
+      console.log('Navegador do Tiny aberto.');
+
       const context = await newContext(browser, tinyAuthFile);
 
       try {
@@ -81,6 +94,7 @@ async function processarArquivo(arquivo: string): Promise<void> {
       } finally {
         await context.close().catch(() => undefined);
         await browser.close().catch(() => undefined);
+        console.log('Navegador do Tiny fechado.');
       }
     }
 
@@ -95,15 +109,43 @@ async function processarArquivo(arquivo: string): Promise<void> {
     }
   } catch (error) {
     console.error(`Erro ao processar ${arquivo}:`, error);
+  }
+}
+
+async function processarFila(): Promise<void> {
+  if (processando) return;
+
+  processando = true;
+
+  try {
+    while (fila.length > 0) {
+      const arquivo = fila.shift();
+      if (!arquivo) continue;
+
+      try {
+        await processarArquivo(arquivo);
+      } finally {
+        naFila.delete(arquivo);
+      }
+    }
   } finally {
-    arquivosEmFila.delete(arquivo);
     processando = false;
+
+    if (fila.length > 0) {
+      void processarFila();
+    }
   }
 }
 
 console.log('Monitorando pasta entrada...');
 console.log(`Entrada: ${ENTRADA}`);
 console.log(`Processados: ${PROCESSADOS}`);
+
+// IMPORTANTE: recupera arquivos que já estavam em entrada antes do watcher iniciar.
+// Isso evita a falha em que a GUI criava o TXT antes do fs.watch estar pronto.
+for (const arquivo of fs.readdirSync(ENTRADA)) {
+  adicionarFila(arquivo);
+}
 
 fs.watch(ENTRADA, (_, filename) => {
   if (!filename) return;
@@ -112,5 +154,5 @@ fs.watch(ENTRADA, (_, filename) => {
   if (!nome.toLowerCase().endsWith('.txt')) return;
 
   console.log(`\nNovo arquivo detectado: ${nome}`);
-  void processarArquivo(nome);
+  adicionarFila(nome);
 });
