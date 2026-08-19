@@ -1,0 +1,18 @@
+{
+  "name": "geradordenotas",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "watcher": "tsx src/watcher.ts",
+    "test:tiny": "tsx src/test-tiny.ts",
+    "login:tiny": "tsx src/login-tiny.ts"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.4",
+    "typescript": "^5.9.2"
+  }
+}
