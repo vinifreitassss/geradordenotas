@@ -1,9 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+
+import { APP_ROOT } from '../config.js';
 import { launchBrowser, newContext } from './bot/browser.js';
 import { emitInvoice, tinyAuthFile } from './bot/tiny.js';
 
-const ROOT = process.cwd();
+const ROOT = APP_ROOT;
 const ENTRADA = path.join(ROOT, 'entrada');
 const PROCESSADOS = path.join(ROOT, 'processados');
 
@@ -74,6 +76,12 @@ async function processarArquivo(arquivo: string): Promise<void> {
     if (pedidos.length > 0) {
       const browser = await launchBrowser();
       console.log('Navegador do Tiny aberto.');
+      console.log(`Arquivo de sessão: ${tinyAuthFile}`);
+      console.log(
+        fs.existsSync(tinyAuthFile)
+          ? 'Sessão salva será utilizada.'
+          : 'ATENÇÃO: tiny.json não encontrado; o Tiny pedirá login.',
+      );
 
       const context = await newContext(browser, tinyAuthFile);
 
@@ -138,11 +146,11 @@ async function processarFila(): Promise<void> {
 }
 
 console.log('Monitorando pasta entrada...');
+console.log(`Projeto: ${ROOT}`);
 console.log(`Entrada: ${ENTRADA}`);
 console.log(`Processados: ${PROCESSADOS}`);
+console.log(`Sessão Tiny: ${tinyAuthFile}`);
 
-// IMPORTANTE: recupera arquivos que já estavam em entrada antes do watcher iniciar.
-// Isso evita a falha em que a GUI criava o TXT antes do fs.watch estar pronto.
 for (const arquivo of fs.readdirSync(ENTRADA)) {
   adicionarFila(arquivo);
 }
